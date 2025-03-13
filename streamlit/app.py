@@ -6,255 +6,301 @@ import re
 from dotenv import load_dotenv
 import google.generativeai as genai
 from pathlib import Path
-from config import SQL_CONFIG, get_connection_string
+from config import SQL_CONFIG, get_connection_string, SYSTEM_PROMPT
 
 # Load environment variables from parent directory's .env file
 load_dotenv(Path(__file__).parent.parent / '.env')
 
-# Configuration
+# Configuration Google Gemini
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 if not GOOGLE_API_KEY:
     st.error("Veuillez définir votre GOOGLE_API_KEY dans le fichier .env")
     st.stop()
 
-# Configure Gemini
 genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel('gemini-2.0-flash')
 
-# Page configuration
-st.set_page_config(
-    page_title="Assistant SQL",
-    page_icon="💬",
-    layout="wide"
-)
 
+def query_model(payload):
+    """
+    Envoie une requête au modèle Google Gemini
+    """
+    try:
+        response = model.generate_content(payload)
+        return response
+    except Exception as e:
+        st.error(f"Erreur lors de l'appel au modèle : {str(e)}")
+        return None
+
+def show_about():
+    """Affiche les informations À propos dans la sidebar"""
+    with st.sidebar:
+        st.title("À propos")
+        st.markdown("""
+        ### Assistant SQL
+        
+        Cet assistant vous aide à interroger votre base de données SQL Server en langage naturel.
+        
+        **Fonctionnalités :**
+        - Traduction en langage SQL
+        - Visualisation des résultats
+        - Support de SQL Server
+        
+        **Technologies :**
+        - Streamlit
+        - Google Gemini
+        - SQL Server
+        
+        **Version :** 1.0.0
+        """)
+        
+       
 @st.cache_data(ttl=3600)
 def get_database_schema(_conn):
-    """Récupère dynamiquement le schéma de la base de données"""
+    """
+    Récupère le schéma de la base de données
+    """
+    schema = {
+        'tables': [],
+        'relations': []
+    }
+    
     try:
         cursor = _conn.cursor()
         
-        # Récupérer toutes les tables
-        cursor.execute("""
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-        """)
-        tables = [row[0] for row in cursor.fetchall()]
+        # Récupérer les tables et leurs colonnes
+        tables_query = """
+        SELECT 
+            t.name AS table_name,
+            c.name AS column_name,
+            ty.name AS data_type,
+            c.max_length,
+            c.is_nullable,
+            c.is_identity,
+            CAST(CASE WHEN EXISTS (
+                SELECT 1 FROM sys.indexes i
+                JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+                WHERE i.is_primary_key = 1
+                AND ic.object_id = c.object_id
+                AND ic.column_id = c.column_id
+            ) THEN 1 ELSE 0 END AS bit) AS is_primary_key
+        FROM sys.tables t
+        JOIN sys.columns c ON t.object_id = c.object_id
+        JOIN sys.types ty ON c.user_type_id = ty.user_type_id
+        ORDER BY t.name, c.column_id
+        """
         
-        schema = {}
-        for table in tables:
-            # Récupérer les colonnes pour chaque table
-            cursor.execute(f"""
-                SELECT 
-                    COLUMN_NAME,
-                    DATA_TYPE,
-                    CHARACTER_MAXIMUM_LENGTH,
-                    NUMERIC_PRECISION,
-                    NUMERIC_SCALE,
-                    IS_NULLABLE
-                FROM INFORMATION_SCHEMA.COLUMNS 
-                WHERE TABLE_NAME = ?
-                ORDER BY ORDINAL_POSITION
-            """, table)
-            
-            columns = []
-            for col in cursor.fetchall():
-                col_name = col[0]
-                data_type = col[1]
-                max_length = col[2]
-                precision = col[3]
-                scale = col[4]
-                nullable = col[5]
-                
-                type_desc = data_type
-                if data_type in ('varchar', 'nvarchar', 'char', 'nchar'):
-                    type_desc += f"({max_length if max_length != -1 else 'max'})"
-                elif data_type in ('decimal', 'numeric'):
-                    type_desc += f"({precision},{scale})"
-                    
-                columns.append(f"{col_name} ({type_desc})")
-            
-            schema[table] = columns
-            
-        # Récupérer les relations entre les tables
-        cursor.execute("""
-            SELECT 
-                fk.name AS FK_name,
-                tp.name AS parent_table,
-                cp.name AS parent_column,
-                tr.name AS referenced_table,
-                cr.name AS referenced_column
-            FROM 
-                sys.foreign_keys fk
-                INNER JOIN sys.tables tp ON fk.parent_object_id = tp.object_id
-                INNER JOIN sys.tables tr ON fk.referenced_object_id = tr.object_id
-                INNER JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
-                INNER JOIN sys.columns cp ON fkc.parent_column_id = cp.column_id AND fkc.parent_object_id = cp.object_id
-                INNER JOIN sys.columns cr ON fkc.referenced_column_id = cr.column_id AND fkc.referenced_object_id = cr.object_id
-        """)
+        cursor.execute(tables_query)
+        current_table = None
         
-        relations = cursor.fetchall()
-        schema['relations'] = []
-        for rel in relations:
+        for row in cursor.fetchall():
+            table_name = row.table_name
+            column = {
+                'name': row.column_name,
+                'type': row.data_type,
+                'nullable': row.is_nullable,
+                'is_identity': row.is_identity,
+                'is_primary_key': row.is_primary_key
+            }
+            
+            if current_table is None or current_table['name'] != table_name:
+                if current_table is not None:
+                    schema['tables'].append(current_table)
+                current_table = {
+                    'name': table_name,
+                    'columns': []
+                }
+            
+            current_table['columns'].append(column)
+        
+        if current_table is not None:
+            schema['tables'].append(current_table)
+        
+        # Récupérer les relations
+        relations_query = """
+        SELECT 
+            pt.name AS from_table,
+            pc.name AS from_column,
+            rt.name AS to_table,
+            rc.name AS to_column
+        FROM sys.foreign_keys fk
+        JOIN sys.tables pt ON fk.parent_object_id = pt.object_id
+        JOIN sys.tables rt ON fk.referenced_object_id = rt.object_id
+        JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
+        JOIN sys.columns pc ON fkc.parent_object_id = pc.object_id AND fkc.parent_column_id = pc.column_id
+        JOIN sys.columns rc ON fkc.referenced_object_id = rc.object_id AND fkc.referenced_column_id = rc.column_id
+        ORDER BY pt.name, pc.name
+        """
+        
+        cursor.execute(relations_query)
+        for row in cursor.fetchall():
             schema['relations'].append({
-                'name': rel[0],
-                'from_table': rel[1],
-                'from_column': rel[2],
-                'to_table': rel[3],
-                'to_column': rel[4]
+                'from_table': row.from_table,
+                'from_column': row.from_column,
+                'to_table': row.to_table,
+                'to_column': row.to_column
             })
-        
+            
         cursor.close()
         return schema
         
     except Exception as e:
-        st.error(f"Erreur lors de la récupération du schéma: {str(e)}")
+        st.error(f"Erreur lors de la récupération du schéma : {str(e)}")
         return None
 
 def generate_sql_query(question, schema):
-    """Traduit le langage naturel en SQL avec Gemini"""
-    if not schema:
-        return None
-        
+    """
+    Génère une requête SQL à partir d'une question en langage naturel
+    """
     # Construire la description du schéma
-    schema_desc = "Schéma de la base de données:\n"
-    for table, columns in schema.items():
-        if table != 'relations':
-            schema_desc += f"\nTable '{table}':\n"
-            for col in columns:
-                schema_desc += f"  - {col}\n"
+    schema_desc = "Schéma de la base de données :\n"
     
-    if schema.get('relations'):
-        schema_desc += "\nRelations entre les tables:\n"
+    # Tables et colonnes
+    for table in schema['tables']:
+        schema_desc += f"\nTable {table['name']} :\n"
+        for col in table['columns']:
+            pk = "PK" if col['is_primary_key'] else "  "
+            nullable = "NULL" if col['nullable'] else "NOT NULL"
+            schema_desc += f"  - {pk} {col['name']} ({col['type']}) {nullable}\n"
+    
+    # Relations
+    if schema['relations']:
+        schema_desc += "\nRelations :\n"
         for rel in schema['relations']:
             schema_desc += f"  - {rel['from_table']}.{rel['from_column']} → {rel['to_table']}.{rel['to_column']}\n"
     
-    prompt = f"""Tu es un expert en SQL Server. Traduis cette question en requête SQL.
-
-{schema_desc}
-
-Question : {question}
-
-INSTRUCTIONS IMPORTANTES:
-1. Retourne UNIQUEMENT la requête SQL, sans explication ni commentaire
-2. Utilise les noms exacts des tables et colonnes du schéma
-3. Pour les ID spécifiques, respecte la casse exacte
-"""
-    
     try:
-        # Generate SQL query
-        response = model.generate_content(prompt)
+        # Utiliser le prompt système depuis config.py
+        prompt = SYSTEM_PROMPT.format(
+            schema_desc=schema_desc,
+            question=question
+        )
         
+        # Appeler le modèle
+        response = query_model(prompt)
         if not response or not response.text:
+            st.error("Le modèle n'a pas généré de réponse valide.")
             return None
             
-        # Get the raw response and clean it up
+        # Extraire et nettoyer la requête SQL
         sql_query = response.text.strip()
-        sql_query = sql_query.rstrip(';')
+        
+        # Supprimer les blocs de code markdown s'ils existent
         sql_query = re.sub(r'```sql\s*|\s*```', '', sql_query)
+        
+        # Supprimer les points-virgules finaux
+        sql_query = sql_query.rstrip(';')
+        
+        # Validation basique
         sql_query = sql_query.strip()
-        
-        # Validate the query
-        if not sql_query or not sql_query.upper().startswith('SELECT'):
+        if not sql_query:
+            st.error("La requête générée est vide.")
             return None
+            
+        # Vérifier que la requête commence par un mot-clé SQL valide
+        valid_starts = ('select', 'with')
+        if not any(sql_query.lower().startswith(start) for start in valid_starts):
+            st.error("La requête doit commencer par SELECT ou WITH.")
+            return None
+            
+        # Vérifier la présence de mots-clés SQL de base
+        if 'from' not in sql_query.lower():
+            st.error("La requête doit contenir une clause FROM.")
+            return None
+            
+        # Vérifier que les tables référencées existent dans le schéma
+        tables = [table['name'].lower() for table in schema['tables']]
+        sql_lower = sql_query.lower()
         
+        # Extraire les noms de tables après FROM et JOIN
+        table_refs = re.findall(r'\bfrom\s+(\w+)|join\s+(\w+)', sql_lower)
+        referenced_tables = set()
+        for from_table, join_table in table_refs:
+            if from_table:
+                referenced_tables.add(from_table)
+            if join_table:
+                referenced_tables.add(join_table)
+        
+        # Vérifier que chaque table référencée existe
+        for table in referenced_tables:
+            if table not in tables:
+                st.error(f"La table '{table}' n'existe pas dans le schéma.")
+                return None
+            
         return sql_query
         
     except Exception as e:
-        st.error(f"Erreur lors de la génération de la requête: {str(e)}")
+        st.error(f"Erreur lors de la génération de la requête : {str(e)}")
         return None
 
 def execute_query(conn, query):
-    """Exécute une requête SQL et retourne les résultats sous forme de DataFrame"""
-    cursor = None
+    """
+    Exécute une requête SQL et retourne les résultats sous forme de DataFrame
+    """
     try:
-        cursor = conn.cursor()
-        cursor.execute(query)
-        
-        # Récupérer les colonnes et résultats
-        columns = [column[0] for column in cursor.description]
-        results = cursor.fetchall()
-        
-        # Créer le DataFrame
-        df = pd.DataFrame.from_records(results, columns=columns)
-        return df
-        
+        return pd.read_sql(query, conn)
     except Exception as e:
-        st.error(f"Erreur lors de l'exécution de la requête: {str(e)}")
+        st.error(f"Erreur lors de l'exécution de la requête : {str(e)}")
         return None
-        
-    finally:
-        if cursor:
-            cursor.close()
 
 def main():
-    st.title("💬 Assistant SQL")
+    st.set_page_config(
+        page_title="Assistant SQL",
+        page_icon="",
+        layout="wide"
+    )
+    
+    # Afficher la sidebar À propos
+    show_about()
+    
+    # Titre principal
+    st.title("Assistant SQL")
     
     # Initialize database connection
     conn = None
     try:
-        conn_str = get_connection_string()
-        conn = pyodbc.connect(conn_str, timeout=10)
-    except Exception as e:
-        st.error(f"Erreur de connexion à la base de données: {str(e)}")
-        st.stop()
-    
-    # Get database schema
-    schema = get_database_schema(conn)
-    if not schema:
-        st.error("Impossible de récupérer le schéma de la base de données")
-        st.stop()
-    
-    # Show database info
-    with st.expander("ℹ️ Structure de la base de données"):
-        for table, columns in schema.items():
-            if table != 'relations':
-                st.write(f"**Table: {table}**")
-                st.write("Colonnes:")
-                for col in columns:
-                    st.write(f"- {col}")
-        if schema.get('relations'):
-            st.write("\n**Relations:**")
-            for rel in schema['relations']:
-                st.write(f"- {rel['from_table']}.{rel['from_column']} → {rel['to_table']}.{rel['to_column']}")
-    
-    # User input
-    st.write("### 💬 Posez votre question en français")
-    st.write("Je la traduirai en SQL et vous montrerai les résultats.")
-    
-    # Question input
-    question = st.text_input("Votre question:", placeholder="Exemple: Liste de toutes les tables")
-    
-    if question:
-        # Generate SQL query
-        sql_query = generate_sql_query(question, schema)
+        conn = pyodbc.connect(get_connection_string())
         
-        if sql_query:
-            # Show the generated SQL
-            with st.expander("🔍 Voir la requête SQL générée"):
-                st.code(sql_query, language='sql')
+        # Get database schema
+        schema = get_database_schema(conn)
+        
+        if schema:
+            # User input
+            question = st.text_area(
+                "Posez votre question en langage naturel",
+                placeholder="Exemple : Quels sont les 10 derniers biens ajoutés ?",
+                help="Décrivez ce que vous souhaitez savoir à propos de vos données."
+            )
             
-            try:
-                # Execute query and show results
-                results = execute_query(conn, sql_query)
-                if results is not None:
-                    if len(results) > 0:
-                        st.write("### 📊 Résultats")
-                        st.dataframe(results)
-                        st.write(f"*{len(results)} résultats trouvés*")
-                    else:
-                        st.info("Aucun résultat trouvé pour cette requête.")
-                else:
-                    st.error("Erreur lors de l'exécution de la requête. Vérifiez la syntaxe SQL.")
-            except Exception as e:
-                st.error(f"Erreur lors de l'exécution de la requête: {str(e)}")
-        else:
-            st.error("Je n'ai pas pu générer une requête SQL valide pour votre question. Essayez de reformuler.")
+            # Generate and execute query
+            if st.button("Générer la requête"):
+                sql_query = generate_sql_query(question, schema)
+                
+                if sql_query:
+                    # Show the generated SQL
+                    with st.expander("Voir la requête SQL générée"):
+                        st.code(sql_query, language='sql')
+                    
+                    try:
+                        # Execute query and show results
+                        results = execute_query(conn, sql_query)
+                        if results is not None and not results.empty:
+                            st.dataframe(
+                                results,
+                                use_container_width=True,
+                                hide_index=True
+                            )
+                        else:
+                            st.info("Aucun résultat trouvé.")
+                    except Exception as e:
+                        st.error(f"Erreur lors de l'exécution de la requête : {str(e)}")
+        
+    except Exception as e:
+        st.error(f"Erreur de connexion à la base de données : {str(e)}")
     
-    # Footer
-    st.markdown("---")
-    st.markdown("*💡 Cet assistant utilise Gemini Pro pour traduire vos questions en SQL*")
+    finally:
+        if conn:
+            conn.close()
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,154 @@
+/* Style général */
+.stApp {
+    background-color: #1a1a1a;
+    color: #ffffff;
+}
+
+/* En-tête */
+.main .block-container {
+    padding-top: 1rem;
+}
+
+/* Sidebar */
+.css-1d391kg {
+    background-color: #2d2d2d;
+    color: #ffffff;
+}
+
+/* Boutons */
+.stButton>button {
+    background-color: #4a4a4a;
+    color: white;
+    border-radius: 4px;
+    border: none;
+    padding: 0.5rem 1rem;
+    transition: all 0.2s;
+}
+.stButton>button:hover {
+    background-color: #666666;
+}
+
+/* Tables */
+.dataframe {
+    background-color: #2d2d2d !important;
+    color: #ffffff !important;
+}
+.dataframe th {
+    background-color: #333333 !important;
+    color: #ffffff !important;
+}
+.dataframe td {
+    background-color: #2d2d2d !important;
+    color: #ffffff !important;
+}
+
+/* Messages d'erreur */
+.stAlert {
+    background-color: #2d2d2d;
+    color: #ffffff;
+    border-radius: 4px;
+}
+
+/* Zone de texte */
+.stTextInput>div>div>input,
+.stTextArea>div>div>textarea {
+    background-color: #2d2d2d;
+    color: #ffffff;
+    border: 1px solid #4a4a4a;
+    border-radius: 4px;
+}
+
+/* Carte d'information */
+.info-card {
+    background-color: #2d2d2d;
+    padding: 1.5rem;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 1rem;
+    color: #ffffff;
+}
+
+/* Logo et titre */
+.app-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.app-title {
+    color: #ffffff;
+    margin-left: 1rem;
+}
+
+/* Status badges */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    background-color: #2d2d2d;
+}
+
+.status-badge.success {
+    background-color: #1e4620;
+    color: #4caf50;
+}
+
+.status-badge.error {
+    background-color: #461e1e;
+    color: #f44336;
+}
+
+/* Code blocks */
+.stCodeBlock {
+    background-color: #2d2d2d !important;
+}
+
+/* Expander */
+.streamlit-expanderHeader {
+    background-color: #2d2d2d !important;
+    color: #ffffff !important;
+}
+
+/* Metrics */
+[data-testid="stMetricValue"] {
+    color: #ffffff !important;
+}
+
+/* Footer */
+.footer {
+    color: #666666;
+    font-size: 0.875rem;
+    padding: 1rem 0;
+    margin-top: 2rem;
+    border-top: 1px solid #333333;
+}
+
+/* Markdown */
+.markdown-text-container {
+    color: #ffffff !important;
+}
+
+/* Links */
+a {
+    color: #00b4d8 !important;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .main .block-container {
+        padding: 1rem;
+    }
+    
+    .app-header {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .app-title {
+        margin-left: 0;
+        margin-top: 1rem;
+    }
+}
