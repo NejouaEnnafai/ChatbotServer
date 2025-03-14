@@ -4,19 +4,16 @@ Application web permettant d'interroger une base de données SQL Server en langa
 
 ## Prérequis
 
-- Python 3.8 ou supérieur (si installation standard)
+- Python 3.8 ou supérieur
 - SQL Server avec les vues système accessibles (INFORMATION_SCHEMA, sys)
 - Clé API Google pour Gemini
-- Docker (optionnel, pour déploiement conteneurisé)
 
 ## Installation
 
-### 1. Installation Standard (Sans Docker)
-
 1. Cloner le repository :
 ```bash
-git clone <votre-repo>
-cd <votre-repo>
+git clone https://github.com/NejouaEnnafai/chatbotsqldone.git
+cd chatbotsqldone
 ```
 
 2. Installer les dépendances :
@@ -31,65 +28,42 @@ pip install -r requirements.txt
 streamlit run streamlit/app.py
 ```
 
-### 2. Installation avec Docker (Recommandé pour la Production)
+## Commandes d'Exécution
 
-#### Prérequis Docker
-- Docker installé sur le serveur
-- Accès réseau au serveur SQL Server
-- Port 80 disponible (ou autre port de votre choix)
-
-#### Étapes de Déploiement
-
-1. Configurer le fichier `.env` :
-   - Copier `.env.example` vers `.env`
-   - Remplir les informations (voir section Configuration)
-   - **Important** : Mettre `DB_AUTH_TYPE=sql_server`
-
-2. Construire l'image :
+### Démarrage Rapide
 ```bash
-docker build -t sql-assistant .
+# Cloner le projet
+git clone https://github.com/NejouaEnnafai/chatbotsqldone.git
+cd chatbotsqldone
+
+# Installer les dépendances
+pip install -r requirements.txt
+
+# Lancer l'application
+streamlit run streamlit/app.py
 ```
 
-3. Lancer le conteneur :
+### Mise à Jour du Projet
 ```bash
-docker run -d \
-  --name sql-assistant \
-  -p 80:8501 \
-  --env-file .env \
-  --restart unless-stopped \
-  sql-assistant
+# Mettre à jour depuis le dépôt distant
+git pull origin main
+
+# Mettre à jour les dépendances si nécessaire
+pip install -r requirements.txt --upgrade
 ```
 
-#### Gestion du Conteneur
-
-- Voir les logs :
+### Développement
 ```bash
-docker logs sql-assistant
-```
+# Créer une nouvelle branche
+git checkout -b ma-nouvelle-fonctionnalite
 
-- Redémarrer l'application :
-```bash
-docker restart sql-assistant
-```
+# Sauvegarder les modifications
+git add .
+git commit -m "Description des modifications"
 
-- Arrêter l'application :
-```bash
-docker stop sql-assistant
+# Pousser les modifications
+git push origin ma-nouvelle-fonctionnalite
 ```
-
-- Mettre à jour la configuration :
-```bash
-# 1. Modifier le fichier .env
-# 2. Redémarrer le conteneur
-docker restart sql-assistant
-```
-
-#### Avantages de Docker
-- Installation simplifiée (pas de dépendances Python à gérer)
-- Isolation de l'environnement
-- Redémarrage automatique en cas de crash
-- Facilité de mise à jour
-- Gestion des logs centralisée
 
 ## Configuration
 
@@ -106,9 +80,6 @@ DB_USER=utilisateur-sql
 DB_PASSWORD=mot-de-passe-sql
 DB_PORT=1433
 DB_AUTH_TYPE=sql_server  # Utiliser 'sql_server' en production
-
-# Configuration IA (Optionnel)
-SYSTEM_PROMPT="""Votre prompt personnalisé {schema_desc} {question}"""
 ```
 
 2. Configurer les permissions SQL Server :

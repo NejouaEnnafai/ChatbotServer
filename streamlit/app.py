@@ -20,6 +20,13 @@ if not GOOGLE_API_KEY:
 genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel('gemini-2.0-flash')
 
+# Initialize session state
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
+if 'schema' not in st.session_state:
+    st.session_state.schema = None
+if 'current_sql' not in st.session_state:
+    st.session_state.current_sql = None
 
 def query_model(payload):
     """
@@ -250,56 +257,69 @@ def main():
         layout="wide"
     )
     
-    # Afficher la sidebar À propos
+    # Sidebar avec les informations
     show_about()
     
     # Titre principal
     st.title("Assistant SQL")
+    st.write("Posez vos questions en langage naturel pour interroger la base de données.")
     
-    # Initialize database connection
-    conn = None
     try:
         conn = pyodbc.connect(get_connection_string())
         
-        # Get database schema
-        schema = get_database_schema(conn)
+        # Get and cache database schema
+        if st.session_state.schema is None:
+            st.session_state.schema = get_database_schema(conn)
+            if not st.session_state.schema:
+                return
         
-        if schema:
-            # User input
-            question = st.text_area(
-                "Posez votre question en langage naturel",
-                placeholder="Exemple : Quels sont les 10 derniers biens ajoutés ?",
-                help="Décrivez ce que vous souhaitez savoir à propos de vos données."
-            )
+        # Chat interface
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                if "data" in message:
+                    if "sql" in message:
+                        with st.expander("Voir la requête SQL", expanded=False):
+                            st.code(message["sql"], language="sql")
+                    st.dataframe(message["data"])
+                else:
+                    st.write(message["content"])
+        
+        # Zone de saisie utilisateur
+        if question := st.chat_input("Posez votre question sur la base de données..."):
+            # Afficher la question de l'utilisateur
+            with st.chat_message("user"):
+                st.write(question)
+            st.session_state.messages.append({"role": "user", "content": question})
             
-            # Generate and execute query
-            if st.button("Générer la requête"):
-                sql_query = generate_sql_query(question, schema)
+            # Générer et afficher la réponse
+            with st.chat_message("assistant"):
+                sql_query = generate_sql_query(question, st.session_state.schema)
                 
                 if sql_query:
-                    # Show the generated SQL
-                    with st.expander("Voir la requête SQL générée"):
-                        st.code(sql_query, language='sql')
+                    results = execute_query(conn, sql_query)
+                    response = {
+                        "role": "assistant",
+                        "sql": sql_query
+                    }
                     
-                    try:
-                        # Execute query and show results
-                        results = execute_query(conn, sql_query)
-                        if results is not None and not results.empty:
-                            st.dataframe(
-                                results,
-                                use_container_width=True,
-                                hide_index=True
-                            )
-                        else:
-                            st.info("Aucun résultat trouvé.")
-                    except Exception as e:
-                        st.error(f"Erreur lors de l'exécution de la requête : {str(e)}")
+                    with st.expander("Voir la requête SQL", expanded=False):
+                        st.code(sql_query, language="sql")
+                        
+                    if results is not None:
+                        st.dataframe(results)
+                        response["data"] = results
+                        response["content"] = "Voici les résultats de votre requête."
+                    else:
+                        st.info("Aucun résultat trouvé.")
+                        response["content"] = "La requête n'a retourné aucun résultat."
+                    
+                    st.session_state.messages.append(response)
         
     except Exception as e:
         st.error(f"Erreur de connexion à la base de données : {str(e)}")
     
     finally:
-        if conn:
+        if 'conn' in locals():
             conn.close()
 
 if __name__ == "__main__":

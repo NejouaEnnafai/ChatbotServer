@@ -12,7 +12,8 @@ SQL_CONFIG = {
     'USERNAME': os.getenv('DB_USER'),
     'PASSWORD': os.getenv('DB_PASSWORD'),
     'PORT': os.getenv('DB_PORT', '1433'),
-    'AUTH_TYPE': os.getenv('DB_AUTH_TYPE', 'windows').strip('"')  # Enlever les guillemets
+    'AUTH_TYPE': os.getenv('DB_AUTH_TYPE').strip('"'),  # Enlever les guillemets
+    'TIMEOUT': int(os.getenv('DB_TIMEOUT', '30'))  # Timeout par défaut de 30 secondes
 }
 
 def get_connection_string() -> str:
@@ -35,6 +36,9 @@ def get_connection_string() -> str:
         conn_str += f";UID={SQL_CONFIG['USERNAME']};PWD={SQL_CONFIG['PASSWORD']}"
     else:
         conn_str += ";Trusted_Connection=yes"
+    
+    # Ajouter le timeout
+    conn_str += f";Connection Timeout={SQL_CONFIG['TIMEOUT']}"
     
     return conn_str
 
