@@ -1,4 +1,8 @@
 import streamlit as st
+
+# Configuration de la page Streamlit (doit être la première commande st)
+st.set_page_config(page_title="Assistant SQL", layout="wide")
+
 import pandas as pd
 import pyodbc
 import os
@@ -44,24 +48,18 @@ def show_about():
     with st.sidebar:
         st.title("À propos")
         st.markdown("""
-        ### Assistant SQL
+        ### Assistant Base de Données
         
-        Cet assistant vous aide à interroger votre base de données SQL Server en langage naturel.
+        Cet assistant vous aide à interroger la base de données en langage naturel.
         
         **Fonctionnalités :**
-        - Traduction en langage SQL
+        - Posez vos questions simplement
         - Visualisation des résultats
-        - Support de SQL Server
-        
-        **Technologies :**
-        - Streamlit
-        - Google Gemini
-        - SQL Server
+        - Interface conversationnelle
         
         **Version :** 1.0.0
         """)
-        
-       
+
 @st.cache_data(ttl=3600)
 def get_database_schema(_conn):
     """
@@ -251,18 +249,15 @@ def execute_query(conn, query):
         return None
 
 def main():
-    st.set_page_config(
-        page_title="Assistant SQL",
-        page_icon="",
-        layout="wide"
-    )
-    
+    # Configuration du port Streamlit
+    os.environ['STREAMLIT_SERVER_PORT'] = os.getenv('STREAMLIT_PORT', '8501')
+
     # Sidebar avec les informations
     show_about()
     
     # Titre principal
-    st.title("Assistant SQL")
-    st.write("Posez vos questions en langage naturel pour interroger la base de données.")
+    st.title("Assistant Base de Données")
+    st.write("Posez vos questions simplement, je m'occupe de rechercher les informations pour vous.")
     
     try:
         conn = pyodbc.connect(get_connection_string())
@@ -278,14 +273,14 @@ def main():
             with st.chat_message(message["role"]):
                 if "data" in message:
                     if "sql" in message:
-                        with st.expander("Voir la requête SQL", expanded=False):
+                        with st.expander("Voir la requête technique", expanded=False):
                             st.code(message["sql"], language="sql")
                     st.dataframe(message["data"])
                 else:
                     st.write(message["content"])
         
         # Zone de saisie utilisateur
-        if question := st.chat_input("Posez votre question sur la base de données..."):
+        if question := st.chat_input("Quelle information recherchez-vous ?"):
             # Afficher la question de l'utilisateur
             with st.chat_message("user"):
                 st.write(question)
@@ -302,16 +297,16 @@ def main():
                         "sql": sql_query
                     }
                     
-                    with st.expander("Voir la requête SQL", expanded=False):
+                    with st.expander("Voir la requête technique", expanded=False):
                         st.code(sql_query, language="sql")
                         
                     if results is not None:
                         st.dataframe(results)
                         response["data"] = results
-                        response["content"] = "Voici les résultats de votre requête."
+                        response["content"] = "Voici les résultats de votre recherche."
                     else:
                         st.info("Aucun résultat trouvé.")
-                        response["content"] = "La requête n'a retourné aucun résultat."
+                        response["content"] = "Je n'ai trouvé aucune information correspondant à votre demande."
                     
                     st.session_state.messages.append(response)
         

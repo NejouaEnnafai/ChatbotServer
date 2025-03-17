@@ -1,122 +1,229 @@
-# Assistant SQL avec Streamlit et Gemini
+# ChatbotSQL avec FastAPI et Streamlit
 
-Application web permettant d'interroger une base de données SQL Server en langage naturel.
+Un assistant conversationnel intelligent qui permet d'interroger une base de données SQL en langage naturel. Le projet utilise FastAPI pour l'API REST, Streamlit pour l'interface utilisateur, et le modèle Gemini de Google pour la compréhension du langage naturel.
 
-## Prérequis
+## Fonctionnalités Principales
 
-- Python 3.8 ou supérieur
-- SQL Server avec les vues système accessibles (INFORMATION_SCHEMA, sys)
-- Clé API Google pour Gemini
+- 💬 **Conversation Naturelle** : Posez vos questions en langage naturel
+- 🔍 **Conversion en SQL** : Transformation automatique des questions en requêtes SQL
+- 📊 **Visualisation** : Interface utilisateur intuitive avec Streamlit
+- 🚀 **API REST** : Endpoints FastAPI pour l'intégration avec d'autres applications
+- 🔒 **Sécurité** : Support de l'authentification Windows et SQL Server
+- 📝 **Logs** : Système de logging détaillé pour le debugging
 
-## Installation
-
-1. Cloner le repository :
-```bash
-git clone https://github.com/NejouaEnnafai/chatbotsqldone.git
-cd chatbotsqldone
+## Structure du Projet
+```
+ChatbotClean/
+├── api/
+│   └── main.py          # API FastAPI et logique du chatbot
+├── streamlit/
+│   ├── app.py          # Interface utilisateur Streamlit
+│   ├── config.py       # Configuration partagée
+│   └── static/         # Ressources statiques
+├── .env                # Variables d'environnement
+└── requirements.txt    # Dépendances Python
 ```
 
-2. Installer les dépendances :
-```bash
-pip install -r requirements.txt
+## Prérequis Détaillés
+
+1. **Python**
+   - Version 3.11 ou supérieure
+   - Vérifiez avec : `python --version`
+
+2. **SQL Server**
+   - SQL Server 2019 ou supérieur
+   - Configuration réseau activée
+   - Port par défaut : 1433
+   - Authentification Windows ou SQL Server configurée
+
+3. **Clé API Google**
+   - Compte Google Cloud Platform
+   - API Gemini activée
+   - Clé API avec droits suffisants
+
+4. **Système**
+   - Windows 10/11 (recommandé)
+   - 4GB RAM minimum
+   - Connexion Internet stable
+
+## Guide d'Installation Détaillé
+
+1. **Préparation de l'Environnement**
+   ```bash
+   # déplacez-vous dans le dossier du projet
+   cd ChatbotClean
+   
+   # Créer l'environnement virtuel
+   python -m venv venv
+   
+   # Activer l'environnement (Windows)
+   venv\Scripts\activate
+   
+   # Vérifier l'activation
+   where python  # Doit montrer le python de l'environnement virtuel
+   ```
+
+2. **Installation des Dépendances**
+   ```bash
+   # Mettre à jour pip
+   python -m pip install --upgrade pip
+   
+   # Installer les dépendances
+   pip install -r requirements.txt
+   
+   # Vérifier l'installation
+   pip list  # Doit afficher toutes les dépendances
+   ```
+
+3. **Configuration de l'Environnement**
+   Créez un fichier `.env` à la racine avec ces variables :
+   ```env
+   # API Key Google
+   GOOGLE_API_KEY="votre_clé_api_gemini"
+   
+   # Configuration SQL Server
+   DB_SERVER="nom_serveur_sql"  # Exemple: DESKTOP-ABC\SQLEXPRESS
+   DB_NAME="nom_base_données"
+   DB_AUTH_TYPE="windows"       # ou "sql_server"
+   DB_TIMEOUT=30
+   
+   # Ports des serveurs (optionnel)
+   FASTAPI_PORT=8000      # Port par défaut pour FastAPI
+   STREAMLIT_PORT=8501    # Port par défaut pour Streamlit
+   
+   # Optionnel pour auth SQL Server
+   DB_USER="votre_utilisateur"
+   DB_PASSWORD="votre_mot_de_passe"
+   ```
+
+4. **Vérification de l'Installation**
+   ```bash
+   # 1. Démarrer l'API FastAPI
+   python -m uvicorn api.main:app --reload
+   # Vérifier : http://127.0.0.1:8000/docs
+   
+   # 2. Dans un nouveau terminal, démarrer Streamlit
+   streamlit run streamlit/app.py
+   # Vérifier : http://localhost:8501
+   ```
+
+## Utilisation de l'API REST
+
+### Endpoint Principal : POST /chat
+
+Cet endpoint traite les questions des utilisateurs et retourne les réponses.
+
+**Format de Requête :**
+```json
+{
+  "text": "votre question ici"
+}
 ```
 
-3. Configurer le fichier `.env` (voir section Configuration)
-
-4. Lancer l'application :
-```bash
-streamlit run streamlit/app.py
+**Format de Réponse :**
+```json
+{
+  "answer": "Réponse en langage naturel",
+  "sql_query": "SELECT * FROM table",  # Si applicable
+  "data": [                           # Résultats SQL si applicable
+    {
+      "colonne1": "valeur1",
+      "colonne2": "valeur2"
+    }
+  ]
+}
 ```
 
-## Commandes d'Exécution
+### Exemples d'Utilisation
 
-### Démarrage Rapide
-```bash
-# Cloner le projet
-git clone https://github.com/NejouaEnnafai/chatbotsqldone.git
-cd chatbotsqldone
+1. **Via cURL :**
+   ```bash
+   curl -X POST "http://127.0.0.1:8000/chat" \
+        -H "Content-Type: application/json" \
+        -d "{\"text\":\"Montre-moi tous les biens immobiliers\"}"
+   ```
 
-# Installer les dépendances
-pip install -r requirements.txt
+2. **Via Python :**
+   ```python
+   import requests
+   
+   def ask_chatbot(question):
+       url = "http://127.0.0.1:8000/chat"
+       response = requests.post(url, json={"text": question})
+       return response.json()
+   
+   # Exemple
+   result = ask_chatbot("Quelle est la surface moyenne des appartements?")
+   print(result)
+   ```
 
-# Lancer l'application
-streamlit run streamlit/app.py
-```
+3. **Via JavaScript :**
+   ```javascript
+   async function askChatbot(question) {
+     const response = await fetch('http://127.0.0.1:8000/chat', {
+       method: 'POST',
+       headers: {
+         'Content-Type': 'application/json'
+       },
+       body: JSON.stringify({
+         text: question
+       })
+     });
+     return await response.json();
+   }
+   
+   // Exemple
+   askChatbot('Liste tous les biens avec leur prix')
+     .then(data => console.log(data))
+     .catch(error => console.error(error));
+   ```
 
-### Mise à Jour du Projet
-```bash
-# Mettre à jour depuis le dépôt distant
-git pull origin main
+## Interface Streamlit
 
-# Mettre à jour les dépendances si nécessaire
-pip install -r requirements.txt --upgrade
-```
+L'interface Streamlit offre une expérience utilisateur intuitive :
 
-### Développement
-```bash
-# Créer une nouvelle branche
-git checkout -b ma-nouvelle-fonctionnalite
+1. **Démarrage :**
+   ```bash
+   streamlit run streamlit/app.py
+   ```
 
-# Sauvegarder les modifications
-git add .
-git commit -m "Description des modifications"
+2. **Fonctionnalités :**
+   - Chat en temps réel
+   - Historique des conversations
+   - Visualisation des résultats SQL
+   - Mode sombre/clair
+   - Responsive design
 
-# Pousser les modifications
-git push origin ma-nouvelle-fonctionnalite
-```
+## Dépannage
 
-## Configuration
+### Problèmes Courants
 
-1. Créer un fichier `.env` à la racine du projet avec les informations suivantes :
+1. **Erreur de Connexion SQL**
+   - Vérifier le format du nom du serveur
+   - Tester la connexion avec SQL Server Management Studio
+   - Vérifier les logs dans la console
 
-```env
-# Clé API Google (Obligatoire)
-GOOGLE_API_KEY="votre-clé-api"
+2. **Erreur API Gemini**
+   - Vérifier la validité de la clé API
+   - Vérifier la connexion Internet
+   - Consulter les quotas d'utilisation
 
-# Configuration Base de Données
-DB_SERVER=nom-serveur
-DB_NAME=nom-base
-DB_USER=utilisateur-sql
-DB_PASSWORD=mot-de-passe-sql
-DB_PORT=1433
-DB_AUTH_TYPE=sql_server  # Utiliser 'sql_server' en production
-```
+3. **Erreur Streamlit**
+   - Vérifier que le port 8501 est libre
+   - Redémarrer l'application
+   - Effacer le cache : `.streamlit/`
 
-2. Configurer les permissions SQL Server :
-   - L'utilisateur doit avoir accès en lecture à :
-     - INFORMATION_SCHEMA.TABLES
-     - INFORMATION_SCHEMA.COLUMNS
-     - sys.foreign_keys
-     - sys.tables
-     - sys.columns
-     - Toutes les tables de la base de données
+## Notes Techniques
 
-3. Configuration du serveur :
-   - Ouvrir le port 1433 (ou votre port SQL Server)
-   - Activer le chiffrement SSL pour SQL Server
-   - S'assurer que le certificat SSL est valide
-
-## Sécurité
-
-- Ne jamais commiter le fichier `.env` dans le repository
-- Utiliser des secrets sécurisés pour les mots de passe en production
-- Activer le chiffrement SSL pour la connexion SQL Server
-- Limiter les permissions de l'utilisateur SQL aux opérations nécessaires
-- Configurer un pare-feu pour restreindre l'accès à la base de données
-
-## Maintenance
-
-- Surveiller les logs Streamlit pour les erreurs
-- Vérifier régulièrement les mises à jour des dépendances
-- Sauvegarder régulièrement la configuration
-- Monitorer l'utilisation de l'API Gemini
+- **Performance** : L'API utilise un pool de connexions SQL
+- **Sécurité** : Les requêtes SQL sont nettoyées et validées
+- **Logs** : Niveau INFO par défaut, configurable en DEBUG
+- **Cache** : Streamlit met en cache les requêtes fréquentes
+- **Async** : FastAPI gère les requêtes de manière asynchrone
 
 ## Support
 
-Pour toute question ou problème :
-- Ouvrir une issue sur le repository
-- Contacter l'équipe de maintenance
-
-## Licence
-
-[Votre licence]
+Pour obtenir de l'aide :
+1. Consulter les logs détaillés
+2. Vérifier la documentation Swagger UI
+3. Contacter l'équipe de maintenance
