@@ -49,6 +49,20 @@ async def shutdown_event():
     if hasattr(app.state, "streamlit_process"):
         app.state.streamlit_process.terminate()
 
+@app.get("/", response_class=HTMLResponse)
+async def root():
+    return """
+    <html>
+        <head>
+            <title>Chatbot SQL</title>
+            <meta http-equiv="refresh" content="0;url=http://localhost:8503">
+        </head>
+        <body>
+            <p>Redirection vers l'interface Streamlit...</p>
+        </body>
+    </html>
+    """
+
 if __name__ == "__main__":
     # Charger les variables d'environnement
     from dotenv import load_dotenv

@@ -3,14 +3,16 @@ cd /d %~dp0
 title Chatbot SQL Server
 echo Starting Chatbot SQL Server...
 
-:: Activer l'environnement Python silencieusement
-call venv\Scripts\activate >nul 2>&1
+:: Activer l'environnement Python
+call venv\Scripts\activate.bat
 
-:: Démarrer le serveur en arrière-plan et masquer la fenêtre
-start /B /MIN cmd /c venv\Scripts\python server.py >nul 2>&1
+:: Démarrer le serveur
+start /B python server.py
 
-:: Attendre quelques secondes pour que le serveur démarre silencieusement
-timeout /t 5 /nobreak >nul 2>&1
+:: Attendre que le serveur démarre (2 secondes)
+echo Waiting for server to start...
+timeout /t 2 /nobreak
 
 :: Ouvrir Chrome avec l'application Streamlit
-start chrome http://localhost:8503
+echo Opening Chrome...
+start chrome.exe --new-window "http://localhost:8503"
