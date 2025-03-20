@@ -7,9 +7,10 @@ echo Starting Chatbot SQL Server...
 call venv\Scripts\activate.bat
 
 :: Démarrer le serveur
+echo Starting server...
 start /B python server.py
 
-:: Attendre que le serveur démarre (2 secondes)
+:: Attendre que le serveur démarre
 echo Waiting for server to start...
 timeout /t 2 /nobreak
 
