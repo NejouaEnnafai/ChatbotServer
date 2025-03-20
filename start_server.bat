@@ -12,8 +12,19 @@ start /B python server.py
 
 :: Attendre que le serveur démarre
 echo Waiting for server to start...
-timeout /t 2 /nobreak
+timeout /t 3 /nobreak
 
-:: Ouvrir Chrome avec l'application Streamlit
-echo Opening Chrome...
-start chrome.exe --new-window "http://localhost:8503"
+:: Obtenir l'adresse IP locale
+for /f "tokens=2 delims=:" %%a in ('ipconfig ^| find "IPv4"') do (
+    set IP=%%a
+    goto :found_ip
+)
+:found_ip
+set IP=%IP: =%
+echo.
+echo Serveur accessible aux adresses :
+echo - FastAPI  : http://%IP%:8000
+echo - Streamlit: http://%IP%:8503
+echo.
+echo Appuyez sur une touche pour fermer le serveur...
+pause > nul
