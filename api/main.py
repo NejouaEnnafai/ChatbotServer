@@ -89,6 +89,7 @@ def get_database_schema(conn):
         FROM sys.tables t
         JOIN sys.columns c ON t.object_id = c.object_id
         JOIN sys.types ty ON c.user_type_id = ty.user_type_id
+        WHERE t.name LIKE 'Market%'
         ORDER BY t.name, c.column_id
         """
         
@@ -118,6 +119,33 @@ def get_database_schema(conn):
         if current_table is not None:
             schema['tables'].append(current_table)
             
+        # Récupérer les relations
+        relations_query = """
+        SELECT 
+            t1.name AS from_table,
+            c1.name AS from_column,
+            t2.name AS to_table,
+            c2.name AS to_column
+        FROM sys.foreign_keys fk
+        JOIN sys.tables t1 ON fk.parent_object_id = t1.object_id
+        JOIN sys.tables t2 ON fk.referenced_object_id = t2.object_id
+        JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
+        JOIN sys.columns c1 ON fkc.parent_object_id = c1.object_id AND fkc.parent_column_id = c1.column_id
+        JOIN sys.columns c2 ON fkc.referenced_object_id = c2.object_id AND fkc.referenced_column_id = c2.column_id
+        WHERE t1.name LIKE 'Market%' OR t2.name LIKE 'Market%'
+        ORDER BY t1.name, c1.name
+        """
+        
+        cursor.execute(relations_query)
+        for row in cursor.fetchall():
+            relation = {
+                'from_table': row.from_table,
+                'from_column': row.from_column,
+                'to_table': row.to_table,
+                'to_column': row.to_column
+            }
+            schema['relations'].append(relation)
+        
         cursor.close()
         logger.info("Schéma de la base de données récupéré")
         return schema

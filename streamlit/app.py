@@ -15,6 +15,13 @@ from config import SQL_CONFIG, get_connection_string, SYSTEM_PROMPT
 # Load environment variables from parent directory's .env file
 load_dotenv(Path(__file__).parent.parent / '.env')
 
+#Configuration Proxy
+https_proxy = os.getenv('HTTPS_PROXY')
+if https_proxy :
+    os.environ['HTTPS_PROXY'] = https_proxy if https_proxy else ''
+    st.sidebar.info(f"Proxy Configuré")
+
+
 # Configuration Google Gemini
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 if not GOOGLE_API_KEY:
@@ -63,7 +70,7 @@ def show_about():
 @st.cache_data(ttl=3600)
 def get_database_schema(_conn):
     """
-    Récupère le schéma de la base de données
+    Récupère le schéma de la base de données (uniquement les tables Market)
     """
     schema = {
         'tables': [],
@@ -73,7 +80,7 @@ def get_database_schema(_conn):
     try:
         cursor = _conn.cursor()
         
-        # Récupérer les tables et leurs colonnes
+        # Récupérer les tables et leurs colonnes (uniquement les tables Market)
         tables_query = """
         SELECT 
             t.name AS table_name,
@@ -92,6 +99,7 @@ def get_database_schema(_conn):
         FROM sys.tables t
         JOIN sys.columns c ON t.object_id = c.object_id
         JOIN sys.types ty ON c.user_type_id = ty.user_type_id
+        WHERE t.name LIKE 'Market%'
         ORDER BY t.name, c.column_id
         """
         
@@ -103,6 +111,7 @@ def get_database_schema(_conn):
             column = {
                 'name': row.column_name,
                 'type': row.data_type,
+                'max_length': row.max_length,
                 'nullable': row.is_nullable,
                 'is_identity': row.is_identity,
                 'is_primary_key': row.is_primary_key
@@ -121,7 +130,7 @@ def get_database_schema(_conn):
         if current_table is not None:
             schema['tables'].append(current_table)
         
-        # Récupérer les relations
+        # Récupérer les relations (uniquement pour les tables Market)
         relations_query = """
         SELECT 
             pt.name AS from_table,
@@ -134,16 +143,17 @@ def get_database_schema(_conn):
         JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
         JOIN sys.columns pc ON fkc.parent_object_id = pc.object_id AND fkc.parent_column_id = pc.column_id
         JOIN sys.columns rc ON fkc.referenced_object_id = rc.object_id AND fkc.referenced_column_id = rc.column_id
+        WHERE pt.name LIKE 'Market%' OR rt.name LIKE 'Market%'
         ORDER BY pt.name, pc.name
         """
         
         cursor.execute(relations_query)
         for row in cursor.fetchall():
             schema['relations'].append({
-                'from_table': row.from_table,
-                'from_column': row.from_column,
-                'to_table': row.to_table,
-                'to_column': row.to_column
+                'table1': row.from_table,
+                'column1': row.from_column,
+                'table2': row.to_table,
+                'column2': row.to_column
             })
             
         cursor.close()
