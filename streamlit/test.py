@@ -354,7 +354,7 @@ def main():
     show_about()
     
     # Titre principal
-    st.title("Assistant Base de Données")
+    st.title("Assistant Base de Données Test")
     st.write("Posez vos questions simplement, je m'occupe de rechercher les informations pour vous.")
     
     try:

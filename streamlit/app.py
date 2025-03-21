@@ -253,9 +253,70 @@ def execute_query(conn, query):
     Exécute une requête SQL et retourne les résultats sous forme de DataFrame
     """
     try:
-        return pd.read_sql(query, conn)
+        # Nettoyer la requête pour éviter les problèmes de syntaxe
+        query = query.strip()
+        # Supprimer les points-virgules multiples
+        query = re.sub(r';+', ';', query)
+        # Supprimer les espaces multiples
+        query = re.sub(r'\s+', ' ', query)
+        
+        # Exécuter la requête
+        cursor = conn.cursor()
+        cursor.execute(query)
+        
+        # Récupérer les colonnes
+        columns = [column[0] for column in cursor.description]
+        
+        # Nettoyer les noms de colonnes
+        cleaned_columns = []
+        for col in columns:
+            # Si la colonne est vide, générer un nom basé sur sa position
+            if not col or col.strip() == '':
+                cleaned_columns.append(f'col_{len(cleaned_columns) + 1}')
+            else:
+                cleaned_columns.append(col.strip())
+        
+        # Récupérer les résultats
+        results = cursor.fetchall()
+        
+        # Vérifier si nous avons des résultats
+        if not results:
+            return pd.DataFrame(columns=cleaned_columns)
+            
+        # Créer le DataFrame
+        try:
+            # Vérifier et corriger les noms de colonnes dupliqués
+            unique_columns = []
+            seen_columns = set()
+            for col in cleaned_columns:
+                if col in seen_columns:
+                    # Ajouter un suffixe unique pour les colonnes dupliquées
+                    suffix = 1
+                    while f"{col}_{suffix}" in seen_columns:
+                        suffix += 1
+                    col = f"{col}_{suffix}"
+                seen_columns.add(col)
+                unique_columns.append(col)
+            
+            # Convertir les résultats en liste de listes
+            result_list = [list(row) for row in results]
+            
+            df = pd.DataFrame(result_list, columns=unique_columns)
+            return df
+        except Exception as e:
+            # Si la création du DataFrame échoue, essayer avec une liste de listes
+            try:
+                df = pd.DataFrame(list(results), columns=cleaned_columns)
+                return df
+            except Exception as e:
+                st.error(f"Erreur lors de la création du DataFrame : {str(e)}")
+                st.error(f"Structure des données : {str(results[:1])}")
+                st.error(f"Colonnes : {str(cleaned_columns)}")
+                return None
+        
     except Exception as e:
         st.error(f"Erreur lors de l'exécution de la requête : {str(e)}")
+        st.error(f"Voir la requête technique\n\n```sql\n{query}\n```")
         return None
 
 def main():
