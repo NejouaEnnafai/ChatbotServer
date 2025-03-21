@@ -3,3 +3,6 @@ pandas
 python-dotenv
 requests
 openpyxl
+torch
+transformers
+accelerate
