@@ -150,10 +150,10 @@ def get_database_schema(_conn):
         cursor.execute(relations_query)
         for row in cursor.fetchall():
             schema['relations'].append({
-                'table1': row.from_table,
-                'column1': row.from_column,
-                'table2': row.to_table,
-                'column2': row.to_column
+                'from_table': row.from_table,
+                'from_column': row.from_column,
+                'to_table': row.to_table,
+                'to_column': row.to_column
             })
             
         cursor.close()
@@ -241,7 +241,16 @@ def generate_sql_query(question, schema):
             if table not in tables:
                 st.error(f"La table '{table}' n'existe pas dans le schéma.")
                 return None
-            
+                
+        # Ajouter une limitation à 1000 lignes si ce n'est pas déjà fait
+        if 'top' not in sql_lower:
+            # Trouver la position de la clause FROM
+            from_pos = sql_lower.find('from')
+            if from_pos != -1:
+                # Insérer TOP 1000 juste après SELECT
+                insert_pos = sql_lower.find('select') + 6
+                sql_query = sql_query[:insert_pos] + ' TOP 1000 ' + sql_query[insert_pos:]
+                
         return sql_query
         
     except Exception as e:
