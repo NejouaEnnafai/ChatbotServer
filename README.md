@@ -107,6 +107,50 @@ ChatbotClean/
    # Vérifier : http://localhost:8501
    ```
 
+## Configuration Réseau
+
+### Accès depuis d'autres machines
+
+L'application est configurée pour être accessible depuis n'importe quelle machine du réseau local. Voici comment cela fonctionne :
+
+1. **Détection de l'IP Locale** :
+   ```python
+   def get_local_ip():
+       try:
+           # Crée un socket UDP
+           s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+           # Se connecte à Google DNS (8.8.8.8) pour obtenir l'IP locale
+           s.connect(("8.8.8.8", 80))
+           # Récupère l'adresse IP de la machine
+           ip = s.getsockname()[0]
+           s.close()
+           return ip
+       except:
+           return "0.0.0.0"
+   ```
+   Cette fonction permet d'obtenir l'adresse IP réelle de la machine sur le réseau local.
+
+2. **Configuration des Serveurs** :
+   - FastAPI écoute sur `0.0.0.0:8000`
+   - Streamlit écoute sur `0.0.0.0:8503`
+   
+   L'adresse `0.0.0.0` signifie que les serveurs acceptent les connexions de toutes les interfaces réseau.
+
+### Ports Utilisés
+- **8000** : API FastAPI
+- **8503** : Interface Streamlit
+
+### Accès à l'Application
+1. Démarrez le serveur avec `start_server.bat`
+2. Les URLs d'accès s'afficheront automatiquement
+3. Utilisez ces URLs depuis n'importe quelle machine du réseau
+
+### Résolution des Problèmes
+Si les autres machines ne peuvent pas accéder :
+1. Vérifiez que le pare-feu Windows autorise les ports 8000 et 8503
+2. Assurez-vous que les machines sont sur le même réseau
+3. Testez la connexion avec `ping [IP_DU_SERVEUR]`
+
 ## Utilisation de l'API REST
 
 ### Endpoint Principal : POST /chat
