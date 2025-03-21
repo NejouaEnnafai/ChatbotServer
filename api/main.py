@@ -27,6 +27,7 @@ import google.generativeai as genai
 import pyodbc
 import pandas as pd
 from dotenv import load_dotenv
+from typing import List, Dict, Optional
 
 # Charger les variables d'environnement
 load_dotenv(Path(__file__).parent.parent / '.env')
@@ -46,7 +47,7 @@ if not GOOGLE_API_KEY:
 
 try:
     genai.configure(api_key=GOOGLE_API_KEY)
-    model = genai.GenerativeModel('gemini-2.0-flash')  # Changé de gemini-2.0-flash à gemini-pro
+    model = genai.GenerativeModel('gemini-2.0-flash')
     logger.info("Modèle Gemini configuré avec succès")
 except Exception as e:
     logger.error(f"Erreur lors de la configuration de Gemini : {str(e)}")
@@ -55,6 +56,7 @@ except Exception as e:
 # Modèles de données
 class Question(BaseModel):
     text: str
+    conversation_history: Optional[List[Dict[str, str]]] = []
 
 class Response(BaseModel):
     answer: str
@@ -159,7 +161,7 @@ def execute_query(conn, query):
     try:
         df = pd.read_sql(query, conn)
         logger.info("Requête SQL exécutée avec succès")
-        return df.to_dict('records')
+        return df
     except Exception as e:
         logger.error(f"Erreur lors de l'exécution de la requête : {str(e)}")
         raise HTTPException(status_code=500, detail=f"Erreur lors de l'exécution de la requête : {str(e)}")
@@ -181,17 +183,19 @@ async def chat(question: Question):
     Accepte une question et retourne une réponse avec SQL si pertinent.
     """
     try:
-        logger.info(f"Question reçue : {question.text}")
-        
         # Connexion à la base de données
-        conn_str = get_connection_string()
-        logger.info("Chaîne de connexion générée")
+        conn = pyodbc.connect(get_connection_string())
         
-        conn = pyodbc.connect(conn_str)
-        logger.info("Connexion à la base de données établie")
-        
-        # Récupérer le schéma
+        # Récupération du schéma
         schema = get_database_schema(conn)
+        if not schema:
+            raise HTTPException(status_code=500, message="Impossible de récupérer le schéma de la base de données")
+        
+        # Construire le contexte avec l'historique des conversations
+        conversation_context = "\n".join([
+            f"Question: {msg['question']}\nRéponse SQL: {msg['sql']}"
+            for msg in question.conversation_history[-3:]  # Garder les 3 dernières interactions
+        ])
         
         # Construire la description du schéma
         schema_desc = "Schéma de la base de données :\n"
@@ -202,46 +206,46 @@ async def chat(question: Question):
                 nullable = "NULL" if col['nullable'] else "NOT NULL"
                 schema_desc += f"  - {pk} {col['name']} ({col['type']}) {nullable}\n"
         
-        logger.info("Description du schéma construite")
+        if schema['relations']:
+            schema_desc += "\nRelations :\n"
+            for rel in schema['relations']:
+                schema_desc += f"  - {rel['from_table']}.{rel['from_column']} → {rel['to_table']}.{rel['to_column']}\n"
         
-        # Générer la réponse avec Gemini
-        prompt = SYSTEM_PROMPT.format(
-            schema_desc=schema_desc,
-            question=question.text
-        )
+        # Construire le prompt avec le contexte
+        prompt = f"{SYSTEM_PROMPT}\n\n{schema_desc}\n\n"
+        if conversation_context:
+            prompt += f"Historique des conversations récentes:\n{conversation_context}\n\n"
+        prompt += f"Question actuelle: {question.text}\n\nGénérez uniquement la requête SQL correspondante."
         
-        logger.info("Envoi de la requête à Gemini")
+        # Générer la requête SQL
         response = model.generate_content(prompt)
-        
         if not response or not response.text:
-            logger.error("Gemini n'a pas généré de réponse")
-            raise HTTPException(status_code=500, detail="Le modèle n'a pas généré de réponse")
+            raise HTTPException(status_code=500, detail="Le modèle n'a pas généré de réponse valide")
         
-        answer = response.text.strip()
-        logger.info(f"Réponse de Gemini : {answer}")
+        # Nettoyer la requête SQL
+        sql_query = clean_sql_query(response.text)
         
-        # Vérifier si la réponse est une requête SQL
-        is_sql = any(keyword in answer.lower() for keyword in ['select', 'insert', 'update', 'delete'])
-        
-        if is_sql:
-            logger.info("Exécution de la requête SQL")
-            # Nettoyer la requête SQL avant exécution
-            clean_sql = clean_sql_query(answer)
-            logger.info(f"Requête SQL nettoyée : {clean_sql}")
-            # Exécuter la requête SQL
-            data = execute_query(conn, clean_sql)
-            return Response(answer="Voici les résultats de votre requête", sql_query=clean_sql, data=data)
-        else:
-            # Réponse conversationnelle
-            return Response(answer=answer)
+        # Exécuter la requête
+        try:
+            results = execute_query(conn, sql_query)
+            
+            # Préparer la réponse
+            return Response(
+                answer="Requête exécutée avec succès",
+                sql_query=sql_query,
+                data=results.to_dict('records') if results is not None else None
+            )
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de l'exécution de la requête : {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Erreur lors de l'exécution de la requête : {str(e)}")
             
     except Exception as e:
-        logger.error(f"Erreur lors du traitement : {str(e)}")
+        logger.error(f"Erreur dans le chat : {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         if 'conn' in locals():
             conn.close()
-            logger.info("Connexion à la base de données fermée")
 
 if __name__ == "__main__":
     import uvicorn
