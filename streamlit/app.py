@@ -278,76 +278,65 @@ def main():
     # Interface utilisateur
     st.title("Assistant SQL")
     
-    # Zone de saisie de la question
-    question = st.text_input("Posez votre question sur la base de données :", key="question_input")
-    
     # Affichage de l'historique des conversations
-    if st.session_state.conversation_history:
-        st.subheader("Historique des conversations")
-        for i, msg in enumerate(st.session_state.conversation_history):
-            with st.expander(f"Question {i+1}: {msg['question'][:50]}..."):
-                st.text("Question:")
-                st.write(msg['question'])
-                st.text("Requête SQL générée:")
-                st.code(msg['sql'], language="sql")
-    
-    if question:
-        with st.spinner("Traitement de votre question..."):
-            # Appeler l'API
-            response = query_api(question)
-            
-            if response:
-                # Sauvegarder dans l'historique
-                if response.get('sql_query'):
-                    st.session_state.conversation_history.append({
-                        'question': question,
-                        'sql': response['sql_query']
-                    })
-                
-                # Afficher la requête SQL
-                if response.get('sql_query'):
-                    st.subheader("Requête SQL générée :")
-                    st.code(response['sql_query'], language="sql")
-                
-                # Afficher les résultats
-                if response.get('data'):
-                    st.subheader("Résultats :")
-                    df = pd.DataFrame(response['data'])
-                    st.dataframe(df)
-                else:
-                    st.info("La requête n'a retourné aucun résultat.")
-                    
-            else:
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
+            if "sql" in message:
+                with st.expander("Voir la requête SQL ", expanded=False):
+                    st.code(message["sql"], language="sql")
+            if "data" in message:
+                st.dataframe(message["data"])
+
+    # Zone de saisie utilisateur
+    if question := st.chat_input("Posez votre question..."):
+        # Afficher la question de l'utilisateur
+        with st.chat_message("user"):
+            st.write(question)
+        st.session_state.messages.append({"role": "user", "content": question})
+        
+        # Générer et afficher la réponse
+        with st.chat_message("assistant"):
+            with st.spinner("Je réfléchis..."):
                 try:
-                    conn = pyodbc.connect(get_connection_string())
+                    response = query_api(question)
+                    sql_query = response.get("sql_query", "")
+                    explanation = response.get("explanation", "")
                     
-                    # Get and cache database schema
-                    if st.session_state.schema is None:
-                        st.session_state.schema = get_database_schema(conn)
-                        if not st.session_state.schema:
-                            return
-                    
-                    sql_query = generate_sql_query(question, st.session_state.schema)
+                    st.write(explanation)
                     
                     if sql_query:
-                        results = execute_query(conn, sql_query)
-                        if results is not None:
-                            st.dataframe(results)
-                            st.session_state.conversation_history.append({
-                                'question': question,
-                                'sql': sql_query
-                            })
-                        else:
-                            st.info("Aucun résultat trouvé.")
-                    else:
-                        st.info("La requête n'a retourné aucun résultat.")
+                        with st.expander("Voir la requête SQL", expanded=False):
+                            st.code(sql_query, language="sql")
                         
-                except Exception as e:
-                    st.error(f"Erreur de connexion à la base de données : {str(e)}")
+                        # Exécution de la requête
+                        try:
+                            conn = pyodbc.connect(get_connection_string())
+                            df = execute_query(conn, sql_query)
+                            st.dataframe(df)
+                            
+                            # Sauvegarder dans l'historique
+                            st.session_state.messages.append({
+                                "role": "assistant",
+                                "content": explanation,
+                                "sql": sql_query,
+                                "data": df
+                            })
+                        except Exception as e:
+                            error_msg = f"Erreur lors de l'exécution de la requête : {str(e)}"
+                            st.error(error_msg)
+                            st.session_state.messages.append({
+                                "role": "assistant",
+                                "content": error_msg
+                            })
                     
-                finally:
-                    if 'conn' in locals():
-                        conn.close()
+                except Exception as e:
+                    error_msg = f"Erreur lors de la génération de la réponse : {str(e)}"
+                    st.error(error_msg)
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": error_msg
+                    })
 
 if __name__ == "__main__":
     main()
