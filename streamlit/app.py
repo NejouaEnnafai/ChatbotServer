@@ -10,6 +10,7 @@ import re
 from dotenv import load_dotenv
 import google.generativeai as genai
 from pathlib import Path
+import requests
 from config import SQL_CONFIG, get_connection_string, SYSTEM_PROMPT
 
 # Load environment variables from parent directory's .env file
@@ -17,19 +18,12 @@ load_dotenv(Path(__file__).parent.parent / '.env')
 
 #Configuration Proxy
 https_proxy = os.getenv('HTTPS_PROXY')
-if https_proxy :
-    os.environ['HTTPS_PROXY'] = https_proxy if https_proxy else ''
+if https_proxy:
+    os.environ['HTTPS_PROXY'] = https_proxy
     st.sidebar.info(f"Proxy Configuré")
 
-
-# Configuration Google Gemini
-GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
-if not GOOGLE_API_KEY:
-    st.error("Veuillez définir votre GOOGLE_API_KEY dans le fichier .env")
-    st.stop()
-
-genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel('gemini-2.0-flash')
+# Configuration API
+API_URL = f"http://localhost:{os.getenv('FASTAPI_PORT', '8000')}"
 
 # Initialize session state
 if 'messages' not in st.session_state:
@@ -38,17 +32,8 @@ if 'schema' not in st.session_state:
     st.session_state.schema = None
 if 'current_sql' not in st.session_state:
     st.session_state.current_sql = None
-
-def query_model(payload):
-    """
-    Envoie une requête au modèle Google Gemini
-    """
-    try:
-        response = model.generate_content(payload)
-        return response
-    except Exception as e:
-        st.error(f"Erreur lors de l'appel au modèle : {str(e)}")
-        return None
+if 'conversation_history' not in st.session_state:
+    st.session_state.conversation_history = []
 
 def show_about():
     """Affiche les informations À propos dans la sidebar"""
@@ -63,11 +48,40 @@ def show_about():
         - Posez vos questions simplement
         - Visualisation des résultats
         - Interface conversationnelle
+        - Mémoire des conversations
         
         **Version :** 1.0.0
         """)
 
-@st.cache_data(ttl=3600)
+def query_api(question: str):
+    """
+    Envoie une requête à l'API FastAPI
+    """
+    try:
+        response = requests.post(
+            f"{API_URL}/chat",
+            json={
+                "text": question,
+                "conversation_history": st.session_state.conversation_history
+            }
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        st.error(f"Erreur lors de la communication avec l'API : {str(e)}")
+        return None
+
+def query_model(payload):
+    """
+    Envoie une requête au modèle Google Gemini
+    """
+    try:
+        response = genai.GenerativeModel('gemini-2.0-flash').generate_content(payload)
+        return response
+    except Exception as e:
+        st.error(f"Erreur lors de l'appel au modèle : {str(e)}")
+        return None
+
 def get_database_schema(_conn):
     """
     Récupère le schéma de la base de données (uniquement les tables Market)
@@ -259,73 +273,70 @@ def execute_query(conn, query):
         return None
 
 def main():
-    # Configuration du port Streamlit
-    os.environ['STREAMLIT_SERVER_PORT'] = os.getenv('STREAMLIT_PORT', '8501')
-
-    # Sidebar avec les informations
     show_about()
     
-    # Titre principal
-    st.title("Assistant Base de Données")
-    st.write("Posez vos questions simplement, je m'occupe de rechercher les informations pour vous.")
+    # Interface utilisateur
+    st.title("Assistant SQL")
     
-    try:
-        conn = pyodbc.connect(get_connection_string())
+    # Affichage de l'historique des conversations
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
+            if "sql" in message:
+                with st.expander("Voir la requête SQL ", expanded=False):
+                    st.code(message["sql"], language="sql")
+            if "data" in message:
+                st.dataframe(message["data"])
+
+    # Zone de saisie utilisateur
+    if question := st.chat_input("Posez votre question..."):
+        # Afficher la question de l'utilisateur
+        with st.chat_message("user"):
+            st.write(question)
+        st.session_state.messages.append({"role": "user", "content": question})
         
-        # Get and cache database schema
-        if st.session_state.schema is None:
-            st.session_state.schema = get_database_schema(conn)
-            if not st.session_state.schema:
-                return
-        
-        # Chat interface
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                if "data" in message:
-                    if "sql" in message:
-                        with st.expander("Voir la requête technique", expanded=False):
-                            st.code(message["sql"], language="sql")
-                    st.dataframe(message["data"])
-                else:
-                    st.write(message["content"])
-        
-        # Zone de saisie utilisateur
-        if question := st.chat_input("Quelle information recherchez-vous ?"):
-            # Afficher la question de l'utilisateur
-            with st.chat_message("user"):
-                st.write(question)
-            st.session_state.messages.append({"role": "user", "content": question})
-            
-            # Générer et afficher la réponse
-            with st.chat_message("assistant"):
-                sql_query = generate_sql_query(question, st.session_state.schema)
-                
-                if sql_query:
-                    results = execute_query(conn, sql_query)
-                    response = {
-                        "role": "assistant",
-                        "sql": sql_query
-                    }
+        # Générer et afficher la réponse
+        with st.chat_message("assistant"):
+            with st.spinner("Je réfléchis..."):
+                try:
+                    response = query_api(question)
+                    sql_query = response.get("sql_query", "")
+                    explanation = response.get("explanation", "")
                     
-                    with st.expander("Voir la requête technique", expanded=False):
-                        st.code(sql_query, language="sql")
+                    st.write(explanation)
+                    
+                    if sql_query:
+                        with st.expander("Voir la requête SQL", expanded=False):
+                            st.code(sql_query, language="sql")
                         
-                    if results is not None:
-                        st.dataframe(results)
-                        response["data"] = results
-                        response["content"] = "Voici les résultats de votre recherche."
-                    else:
-                        st.info("Aucun résultat trouvé.")
-                        response["content"] = "Je n'ai trouvé aucune information correspondant à votre demande."
+                        # Exécution de la requête
+                        try:
+                            conn = pyodbc.connect(get_connection_string())
+                            df = execute_query(conn, sql_query)
+                            st.dataframe(df)
+                            
+                            # Sauvegarder dans l'historique
+                            st.session_state.messages.append({
+                                "role": "assistant",
+                                "content": explanation,
+                                "sql": sql_query,
+                                "data": df
+                            })
+                        except Exception as e:
+                            error_msg = f"Erreur lors de l'exécution de la requête : {str(e)}"
+                            st.error(error_msg)
+                            st.session_state.messages.append({
+                                "role": "assistant",
+                                "content": error_msg
+                            })
                     
-                    st.session_state.messages.append(response)
-        
-    except Exception as e:
-        st.error(f"Erreur de connexion à la base de données : {str(e)}")
-    
-    finally:
-        if 'conn' in locals():
-            conn.close()
+                except Exception as e:
+                    error_msg = f"Erreur lors de la génération de la réponse : {str(e)}"
+                    st.error(error_msg)
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": error_msg
+                    })
 
 if __name__ == "__main__":
     main()
